@@ -2,6 +2,8 @@
 A script to fix the audio problems on Legion Pro 7 16IRX8H on Linux.
 This is a combination of solutions from [this thread](https://forums.lenovo.com/t5/Ubuntu/Ubuntu-and-legion-pro-7-16IRX8H-audio-issues/m-p/5210709), with an automatic installer to eliminate manual steps.
 
+## This repo is no longer maintained as the author does not have a laptop to test on. I hope this fix has been useful, and feel free to fork it and tinker if it's been less than useful.
+
 ## Features
 
 - Apply a fix to the TAS2781 chip when pipewire is activated
