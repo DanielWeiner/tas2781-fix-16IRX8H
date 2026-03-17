@@ -236,17 +236,9 @@ execute_fix() {
   local i2c_bus=$(find_i2c_bus)
   local i2c_addr=($(find_i2c_addresses "$i2c_bus"))
 
-  # Before resetting the tas2781, we need to track which address is associated with which channel.
-  # Reseting the tas2781 will reset the channel to the default value, so this step must be done before the reset.
-  declare -A address_channels
+  local count=0
   for value in ${i2c_addr[@]}; do
-    i2cset -f -y $i2c_bus $value 0x00 0x00 # Page 0x00
-    i2cset -f -y $i2c_bus $value 0x7f 0x00 # Book 0x00
-    address_channels["$value"]=$(i2cget -f -y $i2c_bus $value 0x0a | xargs -I{} bash -c 'echo $(({}&0x30))')
-  done
-
-  for value in ${i2c_addr[@]}; do
-    local current_channel="${address_channels[$value]}"
+    local balance_index=$((count % 2))
 
     # TAS2781 initialization
     # Data sheet: https://www.ti.com/lit/ds/symlink/tas2781.pdf
@@ -259,7 +251,11 @@ execute_fix() {
     i2cset -f -y $i2c_bus $value 0x5c 0xd9 # CLK_PWRUD=1, DIS_CLK_HALT=0, CLK_HALT_TIMER=011, IRQZ_CLR=0, IRQZ_CFG=3
     i2cset -f -y $i2c_bus $value 0x60 0x10 # SBCLK_FS_RATIO=2
     
-    i2cset -f -y $i2c_bus $value 0x0a $(( 0x0e | current_channel )) # Left/right channel configuration
+    if [ $balance_index -eq 0 ]; then # Left/right channel configuration
+        i2cset -f -y $i2c_bus $value 0x0a 0x1e
+    else
+        i2cset -f -y $i2c_bus $value 0x0a 0x2e
+    fi
 
     i2cset -f -y $i2c_bus $value 0x0d 0x01 # TX_KEEPCY=0, TX_KEEPLN=0, TX_KEEPEN=0, TX_FILL=0, TX_OFFSET=000, TX_EDGE=1
     i2cset -f -y $i2c_bus $value 0x16 0x40 # AUDIO_SLEN=0, AUDIO_TX=0, AUDIO_SLOT=2
@@ -280,6 +276,9 @@ execute_fix() {
 
     i2cset -f -y $i2c_bus $value 0x00 0x00 # Page 0x00
     i2cset -f -y $i2c_bus $value 0x02 0x00 # Play audio, power up with playback, IV enabled
+
+    count=$((count+1))
+
   done
 
   until [ -e "$power_save_path" ] && [ -e "$power_control_path" ]; do
@@ -299,9 +298,9 @@ run_fix_service() {
   local props_changed='select(.info["change-mask"]|index("props"))'
   local sink='select(.info.props["media.class"]=="Audio/Sink")'
   local snd_hda_intel='select(.info.props["alsa.driver_name"]=="snd_hda_intel")'
-  local alsa_components='select(.info.props["alsa.components"]|test("17aa3886"))'
+  local alsa_card_name='select(.info.props["alsa.card_name"]=="HDA Intel PCH")'
 
-  pw-dump -m | stdbuf -oL jq -cM "$unarray|$snd_hda_intel|$alsa_components|$sink|$state_changed|$props_changed|1" | while read; do
+  pw-dump -m | stdbuf -oL jq -cM "$unarray|$snd_hda_intel|$alsa_card_name|$sink|$state_changed|$props_changed|1" | while read; do
     systemctl restart $SERVICE_NAME
   done
 }
